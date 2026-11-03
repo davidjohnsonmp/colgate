@@ -90,7 +90,8 @@ build_component() {
     count="$(/usr/libexec/PlistBuddy -c "Print" "${plist}" | grep -c "RootRelativeBundlePath" || true)"
     local i=0
     while [[ "${i}" -lt "${count}" ]]; do
-        /usr/libexec/PlistBuddy -c "Set :${i}:BundleIsRelocatable false" "${plist}"
+        /usr/libexec/PlistBuddy -c "Set :${i}:BundleIsRelocatable false" "${plist}" > /dev/null 2>&1 ||
+               /usr/libexec/PlistBuddy -c "Add :${i}:BundleIsRelocatable bool false" "${plist}"
         i=$((i + 1))
     done
     pkgbuild --root "${root}" --component-plist "${plist}" --identifier "${identifier}" \
