@@ -18,6 +18,11 @@ jobs:
   macos:
     runs-on: macos-15
     timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: colgate
+
+    
 
     steps:
       - name: Get the code
@@ -46,7 +51,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Colgate-macOS-installer
-          path: dist/*.pkg
+          path: colgate/dist/*.pkg
           if-no-files-found: error
 
       - name: Run the tests
