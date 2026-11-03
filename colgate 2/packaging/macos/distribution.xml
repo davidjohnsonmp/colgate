@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<installer-gui-script minSpecVersion="2">
+    <title>Colgate</title>
+    <organization>com.hiccupaudio</organization>
+    <domains enable_localSystem="true" enable_currentUserHome="false" enable_anywhere="false"/>
+    <options customize="allow" require-scripts="false" hostArchitectures="x86_64,arm64"/>
+    <volume-check>
+        <allowed-os-versions>
+            <os-version min="10.15"/>
+        </allowed-os-versions>
+    </volume-check>
+    <welcome file="welcome.html" mime-type="text/html"/>
+    <license file="LICENSE.txt" mime-type="text/plain"/>
+    <conclusion file="conclusion.html" mime-type="text/html"/>
+    <choices-outline>
+        <line choice="au"/>
+        <line choice="vst3"/>
+    </choices-outline>
+    <choice id="au" title="Audio Unit" description="For Logic Pro, GarageBand, Ableton Live and other hosts that use Audio Units. Installs to /Library/Audio/Plug-Ins/Components.">
+        <pkg-ref id="com.hiccupaudio.colgate.au"/>
+    </choice>
+    <choice id="vst3" title="VST3" description="For Ableton Live, Cubase, Reaper, Studio One and other hosts that use VST3. Installs to /Library/Audio/Plug-Ins/VST3.">
+        <pkg-ref id="com.hiccupaudio.colgate.vst3"/>
+    </choice>
+    <pkg-ref id="com.hiccupaudio.colgate.au" version="__VERSION__" onConclusion="none">Colgate-AU.pkg</pkg-ref>
+    <pkg-ref id="com.hiccupaudio.colgate.vst3" version="__VERSION__" onConclusion="none">Colgate-VST3.pkg</pkg-ref>
+</installer-gui-script>
