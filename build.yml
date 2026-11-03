@@ -1,0 +1,132 @@
+name: Build macOS installer
+
+# Every push to the main branch builds a universal (Apple silicon and Intel) .pkg
+# and puts it on the Releases page under "Colgate (latest build)". Pushing a tag
+# such as v1.0.0 makes a permanent release instead.
+
+on:
+  push:
+    branches: [main, master]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  macos:
+    runs-on: macos-15
+    timeout-minutes: 90
+
+    steps:
+      - name: Get the code
+        uses: actions/checkout@v4
+
+      # The one step that has to work. Everything after it is allowed to report a
+      # problem without taking the installer away.
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"
+
+      - name: Build the AU and VST3
+        run: cmake --build build --target Colgate_All --parallel
+
+      - name: Make the installer
+        env:
+          APPLE_APP_IDENTITY: ${{ secrets.APPLE_APP_IDENTITY }}
+          APPLE_INSTALLER_IDENTITY: ${{ secrets.APPLE_INSTALLER_IDENTITY }}
+          APPLE_CERTIFICATES_P12: ${{ secrets.APPLE_CERTIFICATES_P12 }}
+          APPLE_CERTIFICATES_PASSWORD: ${{ secrets.APPLE_CERTIFICATES_PASSWORD }}
+          APPLE_NOTARY_ID: ${{ secrets.APPLE_NOTARY_ID }}
+          APPLE_NOTARY_PASSWORD: ${{ secrets.APPLE_NOTARY_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: bash packaging/macos/build_pkg.sh build dist
+
+      - name: Keep the installer with this run
+        uses: actions/upload-artifact@v4
+        with:
+          name: Colgate-macOS-installer
+          path: dist/*.pkg
+          if-no-files-found: error
+
+      - name: Run the tests
+        id: tests
+        continue-on-error: true
+        run: |
+          cmake --build build --target colgate_tests ColgatePluginTests --parallel
+          ctest --test-dir build --output-on-failure --timeout 900
+
+      - name: Install the package on this machine
+        id: install
+        continue-on-error: true
+        run: |
+          sudo installer -pkg dist/*.pkg -target /
+          test -d /Library/Audio/Plug-Ins/Components/Colgate.component
+          test -d /Library/Audio/Plug-Ins/VST3/Colgate.vst3
+          lipo -verify_arch arm64 x86_64 /Library/Audio/Plug-Ins/Components/Colgate.component/Contents/MacOS/Colgate
+          lipo -verify_arch arm64 x86_64 /Library/Audio/Plug-Ins/VST3/Colgate.vst3/Contents/MacOS/Colgate
+
+      - name: Validate the Audio Unit with auval
+        id: auval
+        continue-on-error: true
+        run: |
+          sudo killall -9 AudioComponentRegistrar || true
+          auval -a | grep -i -E 'hicc|colgate' || true
+          auval -strict -v aufx Clgt Hicc
+
+      - name: Validate with pluginval
+        id: pluginval
+        continue-on-error: true
+        run: |
+          curl -fsSL -o pluginval.zip https://github.com/Tracktion/pluginval/releases/download/v1.0.4/pluginval_macOS.zip
+          unzip -q pluginval.zip
+          for plugin in /Library/Audio/Plug-Ins/VST3/Colgate.vst3 /Library/Audio/Plug-Ins/Components/Colgate.component; do
+            pluginval.app/Contents/MacOS/pluginval --strictness-level 10 --validate-in-process --timeout-ms 300000 "$plugin"
+          done
+
+      - name: Publish on the Releases page
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TESTS: ${{ steps.tests.outcome }}
+          INSTALL: ${{ steps.install.outcome }}
+          AUVAL: ${{ steps.auval.outcome }}
+          PLUGINVAL: ${{ steps.pluginval.outcome }}
+        run: |
+          notes="Built from ${GITHUB_SHA}. Tests: ${TESTS}. Package install: ${INSTALL}. auval: ${AUVAL}. pluginval: ${PLUGINVAL}."
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            gh release create "${GITHUB_REF_NAME}" dist/*.pkg --title "Colgate ${GITHUB_REF_NAME}" --notes "${notes}"
+          else
+            gh release delete latest --yes --cleanup-tag || true
+            gh release create latest dist/*.pkg --prerelease --target "${GITHUB_SHA}" \
+              --title "Colgate (latest build)" --notes "${notes}"
+          fi
+
+      - name: Report
+        if: always()
+        env:
+          TESTS: ${{ steps.tests.outcome }}
+          INSTALL: ${{ steps.install.outcome }}
+          AUVAL: ${{ steps.auval.outcome }}
+          PLUGINVAL: ${{ steps.pluginval.outcome }}
+        run: |
+          {
+            echo "## Colgate"
+            echo
+            echo "| Check | Result |"
+            echo "| --- | --- |"
+            echo "| Tests | ${TESTS} |"
+            echo "| Package install | ${INSTALL} |"
+            echo "| auval | ${AUVAL} |"
+            echo "| pluginval | ${PLUGINVAL} |"
+            echo
+            echo "The installer is on the Releases page and under Artifacts on this run."
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+          # The installer is out either way, but a failed check should show as a
+          # red run so it doesn't go unnoticed.
+          for result in "${TESTS}" "${INSTALL}" "${AUVAL}" "${PLUGINVAL}"; do
+            if [[ "${result}" != "success" ]]; then
+              exit 1
+            fi
+          done
