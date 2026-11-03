@@ -1,0 +1,4 @@
+#!/bin/sh
+# Makes macOS rescan Audio Units, so Colgate shows up without a restart.
+killall -9 AudioComponentRegistrar 2>/dev/null || true
+exit 0

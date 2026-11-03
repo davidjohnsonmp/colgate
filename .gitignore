@@ -1,0 +1,17 @@
+build/
+build-*/
+cmake-build-*/
+dist/
+.DS_Store
+._*
+.vscode/
+.idea/
+*.user
+compile_commands.json
+
+# Reference renders and mixes are not ours to publish.
+*.wav
+*.aif
+*.aiff
+*.flac
+*.mp3
